@@ -62,6 +62,6 @@ OPTI/
 
 ## How the browser and Python code relate
 
-The browser page calculates the objective functions and optimization steps in JavaScript; it does not import or run the Python modules. The Python implementations are useful for studying and testing the algorithms separately. Their corresponding browser calculations are maintained in the HTML file, so the two implementations should be checked against each other if either changes.
+The browser page calculates the objective functions and optimization steps in JavaScript; it does not import or run the Python modules. The Python implementations are included for studying and testing the algorithms in isolation. I credit them to my lecturer, who provided the original code and used it as the basis for a series of programming exercises. These involved implementing selected functions, defining key variables, and conducting smaller-scale analyses to deepen our understanding of the optimization techniques. Their corresponding browser calculations are maintained in the HTML file, so the two implementations should be checked against each other if either changes.
 
 For setup details and the German-language explanation, see [OPTIMIZATION_LAB.md](OPTIMIZATION_LAB.md).
