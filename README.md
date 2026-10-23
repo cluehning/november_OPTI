@@ -1,6 +1,6 @@
 # Gradient Descent: An Interactive Optimization Lab
 
-This project explores how gradient descent behaves when the geometry of a problem changes. Its browser interface compares several metrics and lets you switch between a quadratic function, Himmelblau's function, and the Rosenbrock function.
+This project explores how gradient descent behaves when the geometry of a problem changes, heavily based on the contents learnt in my university lecture on the same topic. Its browser interface compares several metrics and lets you switch between a quadratic function, Himmelblau's function, and the Rosenbrock function.
 
 The main idea is to make the optimization process visible: instead of seeing only a final answer, I can follow each iteration, inspect the Armijo step-size search, and compare how different metrics affect the path.
 
