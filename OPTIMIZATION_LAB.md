@@ -22,10 +22,10 @@ Datei im aktuellen Ordner und in dessen übergeordneten Ordnern.
 Im Auswahlfeld **Zielfunktion** stehen die Beispiele aus
 `src/optimization_examples.py` zur Verfügung:
 
-* **Quadratische Funktion:** `f(x) = 1/2 xᵀ H x + bᵀ x + c`; die Eingabefelder
+* **Quadratische Funktion:** $$f(x) = 1/2 xᵀ H x + bᵀ x + c$$; die Eingabefelder
   für `H`, `b` und `c` ändern die Funktion. `H` muss positiv definit sein.
-* **Himmelblau:** `f(x) = (x₁² + x₂ − 11)² + (x₁ + x₂² − 7)²`.
-* **Rosenbrock:** `f(x) = (a − x₁)² + b(x₂ − x₁²)²`; die Parameter `a` und `b`
+* **Himmelblau:** $$f(x) = (x₁² + x₂ − 11)² + (x₁ + x₂² − 7)²$$.
+* **Rosenbrock:** $$f(x) = (a − x₁)² + b(x₂ − x₁²)²$$; die Parameter `a` und `b`
   lassen sich einstellen und müssen positiv sein.
 
 Die Seite vergleicht die euklidische Metrik, eine eigene Metrik `M` und eine
