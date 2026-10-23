@@ -18,9 +18,9 @@ The direction is still a descent direction, but its components are scaled by the
 
 The browser lets me choose between three two-dimensional examples:
 
-* **Quadratic:** \(f(x)=\tfrac12 x^\mathsf{T}Hx+b^\mathsf{T}x+c\), with editable coefficients. The matrix \(H\) must be positive definite.
-* **Himmelblau:** \(f(x)=(x_1^2+x_2-11)^2+(x_1+x_2^2-7)^2\).
-* **Rosenbrock:** \(f(x)=(a-x_1)^2+b(x_2-x_1^2)^2\), with editable positive parameters \(a\) and \(b\).
+* **Quadratic:** $$\(f(x)=\tfrac12 x^\mathsf{T}Hx+b^\mathsf{T}x+c\)$$, with editable coefficients. The matrix $\(H\)$ must be positive definite.
+* **Himmelblau:** $$\(f(x)=(x_1^2+x_2-11)^2+(x_1+x_2^2-7)^2\)$$.
+* **Rosenbrock:** $$\(f(x)=(a-x_1)^2+b(x_2-x_1^2)^2\)$$, with editable positive parameters $\(a\)$ and $\(b\)$.
 
 For each function, the interface compares Euclidean distance, a user-defined metric \(M\), and a diagonal metric. For the quadratic example, the diagonal metric is the Jacobi preconditioner \(\operatorname{diag}(H)\). For Himmelblau and Rosenbrock, it is formed from the absolute Hessian diagonal at the starting point.
 
