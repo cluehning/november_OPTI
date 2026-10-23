@@ -1,0 +1,479 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Vorkonditioniertes Gradientenverfahren</title>
+  <!-- Plotly erstellt die interaktiven Diagramme weiter unten. -->
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+  <style>
+    :root { color-scheme: dark; font: 15px/1.45 system-ui, sans-serif; background: #101722; color: #e1e9f2; }
+    body { margin: 0 auto; max-width: 1500px; padding: 24px; }
+    h1, h2 { margin: 0 0 12px; }
+    p { color: #aab9c9; }
+    .controls, .plot-card { background: #172432; border: 1px solid #344357; border-radius: 10px; padding: 16px; }
+    .controls { margin: 20px 0; }
+    .fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; }
+    label { display: grid; gap: 4px; color: #c4d1df; font-size: 13px; }
+    label[hidden] { display: none; }
+    input, select, button { box-sizing: border-box; width: 100%; border: 1px solid #405168; border-radius: 5px; padding: 7px; background: #101722; color: #e1e9f2; }
+    button { cursor: pointer; background: #26364a; }
+    button:hover { background: #3d5470; }
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    .actions button { width: auto; min-width: 95px; }
+    .status { min-height: 1.5em; color: #ff8a80; margin-top: 8px; }
+    .plots { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 520px), 1fr)); gap: 16px; }
+    .plot { width: 100%; height: 440px; }
+    .plot-card h2 { font-size: 17px; }
+    .scrubber { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px; margin: 16px 0; }
+    .scrubber input { padding: 0; }
+    code { color: #9fd3ff; }
+    @media (max-width: 650px) { body { padding: 12px; } .plot { height: 360px; } }
+  </style>
+</head>
+<body>
+  <h1>Vorkonditioniertes Gradientenverfahren</h1>
+  <p>Hier lassen sich drei Metriken für Zielfunktionen aus
+    <code>optimization_examples.py</code> vergleichen. Die Funktionen sind im
+    Browser mit JavaScript nachgebildet; die Berechnungen laufen direkt hier.
+    Zum Laden der Diagramme wird Plotly aus einem CDN geladen.</p>
+
+  <!-- Hier liegen Funktionswahl, Parameter und Steuerung der Iterationen. -->
+  <section class="controls">
+    <h2>Zielfunktion, Parameter und Innenprodukt</h2>
+    <div class="fields">
+      <label>Zielfunktion<select id="objective">
+        <option value="quadratic">Quadratische Funktion</option>
+        <option value="himmelblau">Himmelblau</option>
+        <option value="rosenbrock">Rosenbrock</option>
+      </select></label>
+    </div>
+    <p id="objective-description">Die quadratische Funktion ist
+      <code>f(x) = 1/2 xᵀHx + bᵀx + c</code>. Mit <code>H11</code>,
+      <code>H12</code>, <code>H22</code>, <code>b1</code>, <code>b2</code>
+      und <code>c</code> kannst du sie verändern. Für Himmelblau und
+      Rosenbrock werden die entsprechenden Funktionen aus
+      <code>optimization_examples.py</code> verwendet.</p>
+    <p>Mit <code>M11</code>, <code>M12</code> und <code>M22</code> wird
+      <code>M = [[M11, M12], [M12, M22]]</code> festgelegt. Die Matrix muss
+      positiv definit sein. Mit Enter oder „Neu berechnen“ werden die Werte übernommen.</p>
+    <div class="fields" id="fields"></div>
+    <div class="actions">
+      <button id="apply">Neu berechnen</button>
+      <button id="back">◀ Zurück</button>
+      <button id="forward">Weiter ▶</button>
+      <button id="play">Start</button>
+      <button id="reset">Zurücksetzen</button>
+    </div>
+    <div class="fields" style="margin-top:14px">
+      <label>Ausgewählte Metrik<select id="metric"></select></label>
+      <label>Iteration<input id="iteration" type="range" min="0" max="1" value="0"></label>
+      <div id="iteration-label" style="align-self:end"></div>
+    </div>
+    <div id="status" class="status" role="status"></div>
+  </section>
+
+  <!-- JavaScript füllt diese sechs Bereiche mit den berechneten Diagrammen. -->
+  <main class="plots">
+    <section class="plot-card"><h2>Höhenlinien und Iterationswege</h2><div id="contour" class="plot"></div></section>
+    <section class="plot-card"><h2>Zielfläche im dreidimensionalen Raum</h2><div id="surface" class="plot"></div></section>
+    <section class="plot-card"><h2>Variablen in den Iterationen</h2><div id="variables" class="plot"></div></section>
+    <section class="plot-card"><h2>Armijo-Schrittweitensuche</h2><div id="armijo" class="plot"></div></section>
+    <section class="plot-card"><h2>Verallgemeinerte Eigenwerte</h2><div id="spectrum" class="plot"></div></section>
+    <section class="plot-card"><h2>Vergleich der Metriken</h2><div id="summary" class="plot"></div></section>
+  </main>
+
+  <script>
+    "use strict";
+    // Startwerte für alle Eingabefelder der interaktiven Ansicht.
+    const fieldDefaults = [
+      ["H11", 9], ["H12", 3], ["H22", 2], ["b1", -2], ["b2", 1], ["c", 0],
+      ["rosenbrockA", 1], ["rosenbrockB", 100],
+      ["M11", 2], ["M12", 0.55], ["M22", 1], ["x01", -3], ["x02", 3],
+      ["Range", 5], ["alpha0", 1], ["beta", 0.5], ["sigma", 0.1],
+      ["Max backtracks", 30], ["Max iterations", 80]
+    ];
+    const colors = ["#64b5f6", "#ffb74d", "#81c784"];
+    let names = ["Euklidisch", "Eigene Metrik", "Jacobi-Vorkonditionierer"];
+    const displayNames = {
+      H11: "H₁₁", H12: "H₁₂", H22: "H₂₂", b1: "b₁", b2: "b₂", c: "c",
+      rosenbrockA: "Rosenbrock a", rosenbrockB: "Rosenbrock b",
+      M11: "M₁₁", M12: "M₁₂", M22: "M₂₂", x01: "Startwert x₀,₁",
+      x02: "Startwert x₀,₂", Range: "Plotbereich", alpha0: "α₀",
+      beta: "β", sigma: "σ", "Max backtracks": "Max. Rücksprünge",
+      "Max iterations": "Max. Iterationen"
+    };
+    const fields = document.getElementById("fields");
+    const objectiveSelect = document.getElementById("objective");
+    const metricSelect = document.getElementById("metric");
+    const iterationSlider = document.getElementById("iteration");
+    let state, selectedMetric = 0, selectedIteration = 0, timer = null;
+
+    // Die Eingabefelder werden aus den Startwerten erzeugt, damit sie einheitlich bleiben.
+    for (const [name, value] of fieldDefaults) {
+      const label = document.createElement("label");
+      label.htmlFor = `input-${name}`;
+      label.textContent = displayNames[name];
+      const input = document.createElement("input");
+      input.id = `input-${name}`;
+      input.type = "number";
+      input.step = "any";
+      input.value = value;
+      label.append(input);
+      fields.append(label);
+    }
+
+    // Kleine Hilfsfunktionen für Vektoren und zweidimensionale Matrizen.
+    function updateMetricOptions() {
+      metricSelect.replaceChildren();
+      names.forEach((name, index) => {
+        const option = document.createElement("option");
+        option.value = index;
+        option.textContent = name;
+        metricSelect.append(option);
+      });
+    }
+    const valueOf = name => Number(document.getElementById(`input-${name}`).value);
+    const dot = (a, b) => a[0] * b[0] + a[1] * b[1];
+    const multiply = (A, x) => [A[0][0] * x[0] + A[0][1] * x[1], A[1][0] * x[0] + A[1][1] * x[1]];
+    const solve = (A, x) => {
+      const determinant = A[0][0] * A[1][1] - A[0][1] * A[1][0];
+      return [(A[1][1] * x[0] - A[0][1] * x[1]) / determinant,
+        (-A[1][0] * x[0] + A[0][0] * x[1]) / determinant];
+    };
+
+    // Wert, Gradient und Hesse-Matrix der ausgewählten Funktion an einem Punkt.
+    function objectiveAt(type, x, v) {
+      const [x1, x2] = x;
+      if (type === "quadratic") {
+        const H = [[v.H11, v.H12], [v.H12, v.H22]], b = [v.b1, v.b2];
+        return {
+          value: 0.5 * dot(x, multiply(H, x)) + dot(b, x) + v.c,
+          gradient: [multiply(H, x)[0] + b[0], multiply(H, x)[1] + b[1]],
+          hessian: H
+        };
+      }
+      if (type === "himmelblau") {
+        const first = x1 ** 2 + x2 - 11, second = x1 + x2 ** 2 - 7;
+        return {
+          value: first ** 2 + second ** 2,
+          gradient: [4 * x1 * first + 2 * second, 2 * first + 4 * x2 * second],
+          hessian: [
+            [12 * x1 ** 2 + 4 * (x2 - 11) + 2, 4 * (x1 + x2)],
+            [4 * (x1 + x2), 12 * x2 ** 2 + 4 * (x1 - 7) + 2]
+          ]
+        };
+      }
+      const a = v.rosenbrockA, b = v.rosenbrockB, valley = x2 - x1 ** 2;
+      return {
+        value: (a - x1) ** 2 + b * valley ** 2,
+        gradient: [-2 * (a - x1) - 4 * b * x1 * valley, 2 * b * valley],
+        hessian: [
+          [2 - 4 * b * (x2 - 3 * x1 ** 2), -4 * b * x1],
+          [-4 * b * x1, 2 * b]
+        ]
+      };
+    }
+    const positiveDefinite = A => A[0][0] > 0 && A[0][0] * A[1][1] - A[0][1] * A[1][0] > 1e-12;
+
+    // Führt den vorkonditionierten Abstieg aus und verkleinert den Schritt nach Armijo.
+    function optimize(objective, start, M, settings) {
+      const points = [start.slice()], steps = [];
+      let x = start.slice(), converged = false;
+      for (let k = 0; k < settings.iterations; k++) {
+        const gradient = objective(x).gradient;
+        if (Math.hypot(...gradient) <= 1e-8) { converged = true; break; }
+        const direction = solve(M, gradient).map(value => -value);
+        const derivative = dot(gradient, direction);
+        let step = settings.alpha, accepted = false, trials = [];
+        for (let j = 0; j <= settings.backtracks; j++) {
+          const candidate = [x[0] + step * direction[0], x[1] + step * direction[1]];
+          const candidateValue = objective(candidate).value;
+          const bound = objective(x).value + settings.sigma * step * derivative;
+          trials.push({step, value: candidateValue, bound, accepted: candidateValue <= bound});
+          if (candidateValue <= bound) { x = candidate; accepted = true; break; }
+          step *= settings.beta;
+        }
+        steps.push({x: points[points.length - 1], gradient, direction, trials, accepted});
+        if (!accepted) break;
+        points.push(x.slice());
+      }
+      if (Math.hypot(...objective(x).gradient) <= 1e-8) converged = true;
+      return {points, steps, values: points.map(point => objective(point).value), converged};
+    }
+
+    // Liest die Eingaben ein und prüft, ob sie für die Berechnung gültig sind.
+    function readSettings() {
+      const values = Object.fromEntries(fieldDefaults.map(([name]) => [name, valueOf(name)]));
+      values.objective = objectiveSelect.value;
+      if (Object.entries(values).some(([name, value]) => name !== "objective" && !Number.isFinite(value))) throw Error("Bitte in jedes Feld eine endliche Zahl eintragen.");
+      if (objectiveSelect.value === "quadratic" &&
+          !positiveDefinite([[values.H11, values.H12], [values.H12, values.H22]])) throw Error("H muss positiv definit sein.");
+      if (!positiveDefinite([[values.M11, values.M12], [values.M12, values.M22]])) throw Error("M muss positiv definit sein.");
+      if (values.rosenbrockA <= 0 || values.rosenbrockB <= 0) throw Error("Die Parameter von Rosenbrock a und b müssen positiv sein.");
+      if (values.Range <= 0 || values.alpha0 <= 0 || !(values.beta > 0 && values.beta < 1) ||
+          !(values.sigma > 0 && values.sigma < 1) || values["Max iterations"] < 0 ||
+          values["Max backtracks"] < 0 || !Number.isInteger(values["Max iterations"]) ||
+          !Number.isInteger(values["Max backtracks"])) throw Error("Plotbereich und α₀ müssen positiv sein, β und σ zwischen 0 und 1 liegen und die Iterationsgrenzen nichtnegative ganze Zahlen sein.");
+      return values;
+    }
+
+    // Berechnet die drei Metriken, ihre Iterationen und die Vergleichswerte.
+    function makeState(v) {
+      const H = [[v.H11, v.H12], [v.H12, v.H22]];
+      const M = [[v.M11, v.M12], [v.M12, v.M22]];
+      const start = [v.x01, v.x02], objective = point => objectiveAt(v.objective, point, v);
+      const metrics = [[[1, 0], [0, 1]], M];
+      if (v.objective === "quadratic") {
+        metrics.push([[v.H11, 0], [0, v.H22]]);
+        names = ["Euklidisch", "Eigene Metrik", "Jacobi-Vorkonditionierer"];
+      } else {
+        const initialHessian = objective(start).hessian;
+        metrics.push([
+          [Math.max(Math.abs(initialHessian[0][0]), 1e-8), 0],
+          [0, Math.max(Math.abs(initialHessian[1][1]), 1e-8)]
+        ]);
+        names = ["Euklidisch", "Eigene Metrik", "Positive Diagonalmetrik"];
+      }
+      updateMetricOptions();
+      const settings = {alpha: v.alpha0, beta: v.beta, sigma: v.sigma,
+        backtracks: v["Max backtracks"], iterations: v["Max iterations"]};
+      const results = metrics.map(metric => optimize(objective, start, metric, settings));
+      const bestPoint = results.reduce((best, result) => {
+        const candidate = result.points[result.points.length - 1];
+        return objective(candidate).value < objective(best).value ? candidate : best;
+      }, results[0].points[results[0].points.length - 1]);
+      const summaries = metrics.map((metric, i) => {
+        const finalPoint = results[i].points[results[i].points.length - 1];
+        const summary = {iterations: results[i].points.length - 1,
+          finalValue: objective(finalPoint).value,
+          gradientNorm: Math.hypot(...objective(finalPoint).gradient),
+          status: results[i].converged ? "Konvergiert" :
+            results[i].steps.at(-1)?.accepted === false ? "Armijo-Limit" : "Iterationslimit"};
+        if (v.objective === "quadratic") {
+          const trace = (metric[1][1] * H[0][0] + metric[0][0] * H[1][1] -
+            metric[0][1] * H[1][0] - metric[1][0] * H[0][1]) /
+            (metric[0][0] * metric[1][1] - metric[0][1] * metric[1][0]);
+          const determinant = (H[0][0] * H[1][1] - H[0][1] * H[1][0]) /
+            (metric[0][0] * metric[1][1] - metric[0][1] * metric[1][0]);
+          const root = Math.sqrt(Math.max(0, trace * trace - 4 * determinant));
+          summary.eigenvalues = [(trace - root) / 2, (trace + root) / 2];
+          summary.condition = summary.eigenvalues[1] / summary.eigenvalues[0];
+        }
+        return summary;
+      });
+      return {v, H, objective, metrics, results, summaries, xStar: bestPoint,
+        minimum: objective(bestPoint).value, settings};
+    }
+
+    // Erstellt ein Gitter um die Läufe, damit Höhenlinien und Fläche sichtbar sind.
+    function objectiveGrid() {
+      const {xStar, v, results, objective} = state, count = 45;
+      let xMin = xStar[0] - v.Range, xMax = xStar[0] + v.Range;
+      let yMin = xStar[1] - v.Range, yMax = xStar[1] + v.Range;
+      if (v.objective !== "quadratic") {
+        const points = results.flatMap(result => result.points);
+        xMin = Math.min(...points.map(point => point[0])) - v.Range;
+        xMax = Math.max(...points.map(point => point[0])) + v.Range;
+        yMin = Math.min(...points.map(point => point[1])) - v.Range;
+        yMax = Math.max(...points.map(point => point[1])) + v.Range;
+      }
+      const x = Array.from({length: count}, (_, i) => xMin + (xMax - xMin) * i / (count - 1));
+      const y = Array.from({length: count}, (_, i) => yMin + (yMax - yMin) * i / (count - 1));
+      return {x, y, z: y.map(yValue => x.map(xValue => objective([xValue, yValue]).value))};
+    }
+
+    // Gemeinsames Farbschema und Layout für alle Plotly-Diagramme.
+    function layout(title, extra = {}) {
+      return {title, paper_bgcolor: "#172432", plot_bgcolor: "#172432",
+        font: {color: "#e1e9f2"}, margin: {l: 55, r: 25, t: 55, b: 50},
+        legend: {orientation: "h", y: -0.2}, ...extra};
+    }
+
+    // Aktualisiert sämtliche Diagramme aus dem zuletzt berechneten Zustand.
+    function render() {
+      if (!state) return;
+      const {objective, xStar, minimum, results, metrics, summaries, settings, v} = state;
+      const grid = objectiveGrid(), paths = results.map(result => result.points);
+      const contours = [{
+        x: grid.x, y: grid.y, z: grid.z, type: "contour", ncontours: 24,
+        colorscale: [[0, "#172432"], [1, "#526b86"]], showscale: false,
+        contours: { coloring: "lines"}, hovertemplate: "x₁=%{x:.3g}<br>x₂=%{y:.3g}<br>f=%{z:.4g}<extra></extra>"
+      }];
+      paths.forEach((points, i) => contours.push({x: points.map(p => p[0]), y: points.map(p => p[1]),
+        type: "scatter", mode: "lines+markers", name: names[i], line: {color: colors[i]},
+        marker: {size: 7}, hovertemplate: "x₁=%{x:.4g}<br>x₂=%{y:.4g}<extra>%{fullData.name}</extra>"}));
+      const selected = results[selectedMetric], selectedPoint = selected.points[Math.min(selectedIteration, selected.points.length - 1)];
+      // Höhenlinien zeigen die Zielfunktion; darüber liegen die Wege der drei Metriken.
+      contours.push({x: [xStar[0]], y: [xStar[1]], type: "scatter", mode: "markers",
+        name: v.objective === "quadratic" ? "Minimum" : "Bestes Ergebnis der Läufe",
+        marker: {symbol: "star", size: 13, color: "#ef6c8e"}});
+      contours.push({x: [selectedPoint[0]], y: [selectedPoint[1]], type: "scatter", mode: "markers",
+        name: "Aktuelle Iterierte", marker: {size: 13, color: "#ffffff", line: {color: colors[selectedMetric], width: 3}}});
+      Plotly.react("contour", contours, layout(
+        (v.objective === "quadratic" ? "f* = " : "Bestes gefundenes f = ") + minimum.toPrecision(5), {
+        xaxis: {title: "x₁", range: [grid.x[0], grid.x[grid.x.length - 1]]},
+        yaxis: {title: "x₂", range: [grid.y[0], grid.y[grid.y.length - 1]], scaleanchor: "x"}
+      }), {responsive: true, scrollZoom: true});
+
+      const surface = [{x: grid.x, y: grid.y, z: grid.z, type: "surface", opacity: 0.72,
+        colorscale: "Viridis", showscale: false, name: "Zielfunktion"}];
+      paths.forEach((points, i) => surface.push({x: points.map(p => p[0]), y: points.map(p => p[1]),
+        z: results[i].values, type: "scatter3d", mode: "lines+markers", name: names[i],
+        line: {color: colors[i], width: 5}, marker: {size: 3, color: colors[i]}}));
+      surface.push({x: [selectedPoint[0]], y: [selectedPoint[1]],
+        z: [objective(selectedPoint).value], type: "scatter3d", mode: "markers",
+        name: "Aktuelle Iterierte", marker: {size: 6, color: "#ffffff"}});
+      Plotly.react("surface", surface, layout("Zielfläche und Iterationswege", {
+        scene: {xaxis: {title: "x₁"}, yaxis: {title: "x₂"}, zaxis: {title: "f(x)"},
+          camera: {eye: {x: 1.55, y: 1.55, z: 1.05}}}
+      }), {responsive: true});
+
+      // Zeichnet beide Koordinaten jeder Iteration als Funktion der Schrittzahl.
+      const variableTraces = [];
+      paths.forEach((points, i) => {
+        variableTraces.push({x: points.map((_, k) => k), y: points.map(p => p[0]),
+          type: "scatter", mode: "lines+markers", name: `${names[i]}: x₁`,
+          line: {color: colors[i]}, legendgroup: names[i]});
+        variableTraces.push({x: points.map((_, k) => k), y: points.map(p => p[1]),
+          type: "scatter", mode: "lines+markers", name: `${names[i]}: x₂`,
+          line: {color: colors[i], dash: "dash"}, legendgroup: names[i]});
+      });
+      Plotly.react("variables", variableTraces, layout("Verlauf der Variablen", {
+        xaxis: {title: "Iteration"}, yaxis: {title: "Variablenwert"}
+      }), {responsive: true});
+
+      const step = selected.steps[selectedIteration];
+      let armijoTraces = [];
+      if (!step) {
+        armijoTraces = [{x: [0.5], y: [0.5], mode: "text", type: "scatter",
+          text: ["Am Minimum ist keine Schrittweitensuche nötig."], showlegend: false}];
+      } else {
+        const firstTrial = step.trials[0].step, lastTrial = step.trials[step.trials.length - 1].step;
+        const tValues = Array.from({length: 120}, (_, i) => Math.max(lastTrial * settings.beta, 1e-12) *
+          (firstTrial / Math.max(lastTrial * settings.beta, 1e-12)) ** (i / 119));
+        armijoTraces = [
+          {x: tValues, y: tValues.map(t => objective(
+            [step.x[0] + t * step.direction[0], step.x[1] + t * step.direction[1]]).value),
+            type: "scatter", mode: "lines", name: "f(x + t d)", line: {color: "#64b5f6"}},
+          {x: tValues, y: tValues.map(t => objective(step.x).value +
+            settings.sigma * t * dot(step.gradient, step.direction)),
+            type: "scatter", mode: "lines", name: "Armijo-Schranke", line: {color: "#ffb74d", dash: "dash"}},
+          {x: step.trials.map(t => t.step), y: step.trials.map(t => t.value),
+            type: "scatter", mode: "markers", name: "Versuche",
+            marker: {color: step.trials.map(t => t.accepted ? "#81c784" : "#ef6c8e"), size: 10}}
+        ];
+      }
+      Plotly.react("armijo", armijoTraces, layout("Armijo-Schrittweitensuche", {
+        xaxis: {title: "Schrittweite t", type: "log"}, yaxis: {title: "Funktionswert / Schranke"}
+      }), {responsive: true});
+
+      // Das Spektrum ist nur für die quadratische Funktion mit konstanter Hesse-Matrix sinnvoll.
+      if (v.objective === "quadratic") {
+        const spectrum = summaries.map((s, i) => ({x: s.eigenvalues, y: [names[i], names[i]],
+          type: "scatter", mode: "lines+markers+text", name: names[i], text: s.eigenvalues.map(x => x.toPrecision(3)),
+          textposition: ["bottom center", "top center"], line: {color: colors[i], width: 4}}));
+        Plotly.react("spectrum", spectrum, layout("Verallgemeinerte Eigenwerte: H v = λ M v", {
+          xaxis: {title: "Krümmung λ", type: "log"}, yaxis: {title: "", categoryorder: "array", categoryarray: names}
+        }), {responsive: true});
+      } else {
+        Plotly.react("spectrum", [{x: [0.5], y: [0.5], mode: "text", type: "scatter",
+          text: ["Die verallgemeinerte Spektralanalyse ist hier nur für die quadratische Funktion definiert."],
+          showlegend: false}], layout("Spektralanalyse nur für quadratische Funktionen"), {responsive: true});
+      }
+
+      const rows = v.objective === "quadratic"
+        ? summaries.map((s, i) => [names[i], s.condition.toPrecision(4), s.eigenvalues[0].toPrecision(4),
+          s.eigenvalues[1].toPrecision(4), String(s.iterations), s.finalValue.toPrecision(5),
+          (s.finalValue - minimum).toExponential(2)])
+        : summaries.map((s, i) => [names[i], String(s.iterations), s.finalValue.toPrecision(5),
+          s.gradientNorm.toExponential(2), s.status]);
+      const headers = v.objective === "quadratic"
+        ? ["Metrik", "κ", "λ min", "λ max", "Schritte", "Endwert f", "f − f*"]
+        : ["Metrik", "Schritte", "Endwert f", "||∇f|| am Ende", "Status"];
+      Plotly.react("summary", [{type: "table",
+        header: {values: headers,
+          fill: {color: "#26374a"}, font: {color: "#e1e9f2"}},
+        cells: {values: rows[0].map((_, col) => rows.map(row => row[col])),
+          fill: {color: [["#172432", "#1c2a39", "#172432"]]}, font: {color: "#e1e9f2"}}
+      }], layout(v.objective === "quadratic" ? "Vergleich der Metriken" : "Ergebnisse der Läufe"), {responsive: true});
+
+      // Der Schieberegler folgt der Länge des gerade ausgewählten Iterationsverlaufs.
+      const maxIteration = Math.max(0, selected.points.length - 1);
+      iterationSlider.max = maxIteration;
+      selectedIteration = Math.min(selectedIteration, maxIteration);
+      iterationSlider.value = selectedIteration;
+      document.getElementById("iteration-label").textContent =
+        `Iteration ${selectedIteration} von ${maxIteration}`;
+    }
+
+    // Übernimmt Eingaben erst nach erfolgreicher Prüfung, berechnet dann alles neu.
+    function recompute() {
+      try {
+        const candidate = makeState(readSettings());
+        state = candidate;
+        selectedIteration = 0;
+        document.getElementById("status").textContent = "";
+        render();
+      } catch (error) {
+        document.getElementById("status").textContent = error.message;
+      }
+    }
+
+    // Zeigt nur die Parameter, die zur aktuell ausgewählten Funktion gehören.
+    function updateObjectiveFields() {
+      const type = objectiveSelect.value;
+      for (const [name] of fieldDefaults) {
+        const quadraticOnly = ["H11", "H12", "H22", "b1", "b2", "c"].includes(name);
+        const rosenbrockOnly = ["rosenbrockA", "rosenbrockB"].includes(name);
+        document.getElementById(`input-${name}`).parentElement.hidden =
+          (quadraticOnly && type !== "quadratic") || (rosenbrockOnly && type !== "rosenbrock");
+      }
+      const descriptions = {
+        quadratic: "f(x) = 1/2 xᵀHx + bᵀx + c. H, b und c kannst du mit den Eingabefeldern ändern.",
+        himmelblau: "Himmelblau: f(x) = (x₁² + x₂ − 11)² + (x₁ + x₂² − 7)². Das beste Ergebnis der drei Läufe wird markiert.",
+        rosenbrock: "Rosenbrock: f(x) = (a − x₁)² + b(x₂ − x₁²)². a und b sind veränderbar; das beste Ergebnis der drei Läufe wird markiert."
+      };
+      document.getElementById("objective-description").textContent = descriptions[type];
+    }
+
+    // Ein Funktionswechsel setzt einen passenden Startpunkt und berechnet die Ansicht neu.
+    objectiveSelect.addEventListener("change", () => {
+      const starts = {
+        quadratic: [-3, 3],
+        himmelblau: [-3, 3],
+        rosenbrock: [-1.2, 1]
+      }[objectiveSelect.value];
+      document.getElementById("input-x01").value = starts[0];
+      document.getElementById("input-x02").value = starts[1];
+      updateObjectiveFields();
+      recompute();
+    });
+
+    // Die übrigen Ereignisse steuern Auswahl, Iterationsschritte und automatische Wiedergabe.
+    document.getElementById("apply").addEventListener("click", recompute);
+    fields.addEventListener("keydown", event => { if (event.key === "Enter") recompute(); });
+    metricSelect.addEventListener("change", () => { selectedMetric = Number(metricSelect.value); selectedIteration = 0; render(); });
+    iterationSlider.addEventListener("input", () => { selectedIteration = Number(iterationSlider.value); render(); });
+    document.getElementById("back").addEventListener("click", () => {
+      selectedIteration = Math.max(0, selectedIteration - 1); render();
+    });
+    document.getElementById("forward").addEventListener("click", () => {
+      selectedIteration = Math.min(state.results[selectedMetric].points.length - 1, selectedIteration + 1); render();
+    });
+    document.getElementById("reset").addEventListener("click", () => { selectedIteration = 0; render(); });
+    document.getElementById("play").addEventListener("click", event => {
+      if (timer) { clearInterval(timer); timer = null; event.currentTarget.textContent = "Start"; return; }
+      if (selectedIteration >= state.results[selectedMetric].points.length - 1) selectedIteration = 0;
+      event.currentTarget.textContent = "Pause";
+      timer = setInterval(() => {
+        if (selectedIteration >= state.results[selectedMetric].points.length - 1) {
+          clearInterval(timer); timer = null; event.currentTarget.textContent = "Start";
+        } else { selectedIteration++; render(); }
+      }, 500);
+    });
+    updateObjectiveFields();
+    recompute();
+  </script>
+</body>
+</html>
